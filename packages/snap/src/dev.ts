@@ -8,6 +8,7 @@ import {
   trackEvent,
 } from '@motiadev/core'
 import path from 'path'
+import { readConfig } from './utils/config-reader'
 import { generateLockedData, getStepFiles } from './generate-locked-data'
 import { createDevWatchers } from './dev-watchers'
 import { stateEndpoints } from './dev/state-endpoints'
@@ -15,7 +16,6 @@ import { activatePythonVenv } from './utils/activate-python-env'
 import { identifyUser } from './utils/analytics'
 import { flush } from '@amplitude/analytics-node'
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 require('ts-node').register({
   transpileOnly: true,
   compilerOptions: { module: 'commonjs' },
@@ -46,11 +46,20 @@ export const dev = async (port: number, isVerbose: boolean, enableMermaid: boole
 
   const lockedData = await generateLockedData(baseDir)
 
+  // 读取配置文件
+  const motiaConfig = readConfig(baseDir)
+
   const eventManager = createEventManager()
-  const state = createStateAdapter({
-    adapter: 'default',
-    filePath: path.join(baseDir, '.motia'),
-  })
+
+  // 根据配置创建状态适配器
+  const state = createStateAdapter(
+    motiaConfig.state.adapter === 'memory'
+      ? { adapter: 'memory' }
+      : {
+          adapter: 'default',
+          filePath: path.join(baseDir, motiaConfig.state.filePath || '.motia'),
+        },
+  )
 
   const config = { isVerbose }
   const motiaServer = createServer(lockedData, eventManager, state, config)
@@ -79,10 +88,8 @@ export const dev = async (port: number, isVerbose: boolean, enableMermaid: boole
   })
 
   const { applyMiddleware } = process.env.__MOTIA_DEV_MODE__
-    ? // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('@motiadev/workbench/middleware')
-    : // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('@motiadev/workbench/dist/middleware')
+    ? require('@motiadev/workbench/middleware')
+    : require('@motiadev/workbench/dist/middleware')
   await applyMiddleware(motiaServer.app)
 
   // 6) Gracefully shut down on SIGTERM
